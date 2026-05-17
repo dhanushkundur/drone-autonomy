@@ -36,3 +36,9 @@ Key learnings:
 - recv_match(type='X', blocking=True) is the basic pattern for grabbing telemetry
 - Drone messages have fields you access with msg.fieldname
 - voltage_battery is in millivolts, not volts
+
+## Day 3 - May 16, 2026
+- Set up WSL with Ubuntu 22.04
+- Built ArduPilot SITL from source
+- Got 02_arm.py working: arms, takes off to 10m, reads altitude back
+- Switched to VS Code with WSL extension for cleaner dev environment
