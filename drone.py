@@ -70,3 +70,22 @@ def distance_meters(lat1, lon1, lat2, lon2):
     lat_diff_m = (lat2 - lat1) * 111_320
     lon_diff_m = (lon2 - lon1) * 111_320 * math.cos(math.radians(lat1))
     return math.sqrt(lat_diff_m**2 + lon_diff_m**2)
+
+def land(connection):
+    print("Landing...")
+    connection.mav.command_long_send(
+    connection.target_system,
+    connection.target_component,
+    mavutil.mavlink.MAV_CMD_NAV_LAND,
+    0,
+    0, 0, 0, 0,
+    0, 0, 0
+    )
+    while connection.motors_armed():
+        msg = connection.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
+        if msg:
+            current_altitude = msg.relative_alt / 1000
+            print(f"Altitude: {current_altitude:.2f} m")
+        time.sleep(1)
+    print("Landed and disarmed")
+    
