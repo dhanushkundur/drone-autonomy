@@ -88,4 +88,32 @@ def land(connection):
             print(f"Altitude: {current_altitude:.2f} m")
         time.sleep(1)
     print("Landed and disarmed")
+
+def return_to_launch(connection):
+    print("Returning to launch...")
+    connection.mav.command_long_send(
+        connection.target_system,
+        connection.target_component,
+        mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH,
+        0,
+        0, 0, 0, 0,
+        0, 0, 0
+    )
+    import time
+    landed_at = None
+    while connection.motors_armed():
+        msg = connection.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
+        if msg:
+            current_altitude = msg.relative_alt / 1000
+            print(f"Altitude: {current_altitude:.2f} m")
+            if current_altitude < 0.2:
+                if landed_at is None:
+                    landed_at = time.time()
+                elif time.time() - landed_at > 5:
+                    print("Low altitude held, assuming landed")
+                    break
+            else:
+                landed_at = None
+        time.sleep(1)
+    print("Return to launch complete")
     
