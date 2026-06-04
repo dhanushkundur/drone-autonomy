@@ -1,6 +1,126 @@
 from pymavlink import mavutil
 import time
 import math
+class Drone:
+    def __init__(self):
+        self.connection = None
+    
+    def connect(self, address='udp:127.0.0.1:14550'):
+        # set self.connection
+        self.connection = mavutil.mavlink_connection(address)
+        # wait for heartbeat
+        print("Waiting for heartbeat...")
+        self.connection.wait_heartbeat()
+        print("Heartbeat received")
+        # print confirmation
+        print(f"Connected to system {self.connection.target_system}, component {self.connection.target_component}")
+    
+    def arm(self):
+        # use self.connection throughout
+        self.connection.set_mode('GUIDED')
+        print("Mode set to GUIDED")
+        print("Arming the vehicle...")
+        self.connection.arducopter_arm()
+        self.connection.motors_armed_wait()
+        print(f"Armed state: {self.connection.motors_armed() != 0}")
+        print("Vehicle armed")
+    
+    def takeoff(self, altitude):
+        print(f"Take off to {altitude} meters...")
+        self.connection.mav.command_long_send(
+            self.connection.target_system,
+            self.connection.target_component,
+            mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
+            0,
+            0, 0, 0, 0,
+            0, 0, altitude
+        )
+        while True:
+            msg = self.connection.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
+            if msg:
+                current_altitude = msg.relative_alt / 1000
+                print(f"Current altitude: {current_altitude} m")
+                if current_altitude >= altitude * 0.95: 
+                    print("Reached target altitude")
+                    break
+            time.sleep(1)
+    
+    def fly_to(self, latitude, longitude, altitude):
+        print(f"Flying to ({latitude}, {longitude}) at {altitude}m...")
+        self.connection.mav.set_position_target_global_int_send(
+            0,
+            self.connection.target_system,
+            self.connection.target_component,
+            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+            0b0000111111111000,
+            int(latitude * 10**7),
+            int(longitude * 10**7),
+            altitude,
+            0, 0, 0,
+            0, 0, 0,
+            0, 0
+        )
+        while True:
+            msg = self.connection.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
+            if msg:
+                current_lat = msg.lat / 10**7
+                current_lon = msg.lon / 10**7
+                distance = distance_meters(current_lat, current_lon, latitude, longitude)
+                print(f"Distance to target: {distance:.1f} m")
+                if distance < 1:
+                    print("Arrived")
+                    break
+            time.sleep(1)
+        
+    
+    def land(self):
+        print("Landing...")
+        self.connection.mav.command_long_send(
+        self.connection.target_system,
+        self.connection.target_component,
+        mavutil.mavlink.MAV_CMD_NAV_LAND,
+        0,
+        0, 0, 0, 0,
+        0, 0, 0
+        )
+        while self.connection.motors_armed():
+            msg = self.connection.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
+            if msg:
+                current_altitude = msg.relative_alt / 1000
+                print(f"Altitude: {current_altitude:.2f} m")
+            time.sleep(1)
+        print("Landed and disarmed")
+
+    
+    def return_to_launch(self):
+        print("Returning to launch...")
+        self.connection.mav.command_long_send(
+            self.connection.target_system,
+            self.connection.target_component,
+            mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH,
+            0,
+            0, 0, 0, 0,
+            0, 0, 0
+        )
+        import time
+        landed_at = None
+        while self.connection.motors_armed():
+            msg = self.connection.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
+            if msg:
+                current_altitude = msg.relative_alt / 1000
+                print(f"Altitude: {current_altitude:.2f} m")
+                if current_altitude < 0.2:
+                    if landed_at is None:
+                        landed_at = time.time()
+                    elif time.time() - landed_at > 5:
+                        print("Low altitude held, assuming landed")
+                        break
+                else:
+                    landed_at = None
+            time.sleep(1)
+        print("Return to launch complete")
+
+
 
 def connect(address='udp:127.0.0.1:14550'):
     connection = mavutil.mavlink_connection(address)

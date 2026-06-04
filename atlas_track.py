@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import time
 from pymavlink import mavutil
-from drone import connect, arm, takeoff, land
+from drone import Drone
 
 # Constants
 FRAME_WIDTH = 500
@@ -25,9 +25,10 @@ def send_yaw_command(connection, yaw_change_degrees):
     )
 
 # Connect and prep drone
-connection = connect()
-arm(connection)
-takeoff(connection, 10)
+drone = Drone()
+drone.connect()
+drone.arm()
+drone.takeoff(10)
 print("Ready to track")
 
 # Open video
@@ -61,7 +62,7 @@ while True:
     # 5. Compute yaw command: yaw_change = error_x * YAW_GAIN
     yaw_change = error_x * YAW_GAIN
     # 6. Send the yaw command using send_yaw_command()
-    send_yaw_command(connection, yaw_change)
+    send_yaw_command(drone.connection, yaw_change)
     # 7. Print error and yaw for debugging
     print(f"Error: {error_x}, Yaw: {yaw_change}")
 
@@ -69,4 +70,4 @@ while True:
 
 cap.release()
 print("Video ended")
-land(connection)
+drone.land()
