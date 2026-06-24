@@ -42,3 +42,26 @@ Key learnings:
 - Built ArduPilot SITL from source
 - Got 02_arm.py working: arms, takes off to 10m, reads altitude back
 - Switched to VS Code with WSL extension for cleaner dev environment
+
+## Day X - June 24, 2026
+Flashed ArduPilot on the Corvon H743.
+
+What I did:
+- Diagnosed USB connectivity issue (cable was charge-only despite lighting up FC)
+- Found BOOT button on Corvon H743 next to USB-C
+- Downloaded ArduCopter V4.8.0-dev (latest, commit 7d2d454e) for CORVON743V1
+- Used STM32CubeProgrammer to flash arducopter_with_bl.hex via DFU mode
+- Board overwritten from PX4 to ArduPilot
+- Mission Planner connects on COM4, HUD responds to board tilt
+
+Key learnings:
+- LEDs lighting up only proves power wires work. Data wires can be broken on the same cable. Always test cables before trusting them.
+- PX4 ships on this board by default. Required _with_bl.hex (not .apj) for first flash because PX4 bootloader cannot accept ArduPilot firmware.
+- "Device Descriptor Request Failed" in Device Manager is often fixed by uninstalling the entry and replugging.
+- DFU mode entry: hold BOOT, plug in USB, release after 2 seconds. LED goes off in DFU mode.
+
+Next session:
+- Sensor calibrations (accel, level horizon)
+- Parameter config: frame type, ESC protocol, battery monitor, failsafes
+- Save params to a file for backup
+- Re-flash to stable when CORVON743V1 lands in stable branch (before first flight)
