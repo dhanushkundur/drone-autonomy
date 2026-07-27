@@ -24,7 +24,7 @@ Next session:
 
 ## Day 2 - May 14, 2026
 First Python script that talks to the drone.
-- Set up MAVLink UDP output in Mission Planner (Ctrl+F → MAVLink → UDP Outbound port 14550)
+- Set up MAVLink UDP output in Mission Planner (Ctrl+F -> MAVLink -> UDP Outbound port 14550)
 - Wrote 01_connect.py: connects via pymavlink, waits for heartbeat, reads SYS_STATUS message, prints battery voltage
 - Debugged port conflicts and connection refused errors
 - Set up Git locally and linked to GitHub repo
@@ -43,86 +43,129 @@ Key learnings:
 - Got 02_arm.py working: arms, takes off to 10m, reads altitude back
 - Switched to VS Code with WSL extension for cleaner dev environment
 
-## Phase 1 wrap-up - late May 2026
-Refactored from loose scripts into a real API.
-- Built the `Drone` class in `drone.py`: connect, arm, takeoff, fly_to, land, return_to_launch
-- `main.py` now drives a full mission in six lines
-- `fly_to` uses `set_position_target_global_int_send` with the velocity/yaw mask
-- Wrote `distance_meters` as a flat-earth approximation (good enough for sub-km waypoints, would need haversine for longer)
-- `return_to_launch` has a "low altitude held for 5 seconds" check before declaring landed, because motors_armed() goes false slightly after touchdown
+## Late May / June 2026 - Transition from sim to hardware
+Decided to stop living in simulation and commit to a real airframe. Renamed the
+project ATLAS (Autonomous Tracking and Landing Aerial System) and reframed the
+whole thing around a flight-first build strategy: get a stable manual hover on
+real hardware before adding any autonomy or vision. Sim work (pymavlink mission
+scripts, OpenCV tracking prototype) stays as a foundation but is no longer the
+critical path.
+
+Hardware selected and locked:
+- FC: Corvon H743 (CORVON743V1 in ArduPilot), running ArduCopter 4.8.0-dev
+- ESC: Corvon 50A 4-in-1, BLHeli_S / Bluejay, DShot300
+- Motors: Emax ECO II 2207 2400KV, 4S
+- Props: HQProp 5x4.3x3 V2S tri-blade
+- TX: BetaFPV LiteRadio 3 (ELRS). RX: RadioMaster RP3 Diversity 2.4GHz ELRS
+- Battery: Zeee 4S 1500mAh
+- Frame: custom single-piece PETG center frame, plus configuration, carbon tube arms
+- GPS (Phase 2): Corvon M10
+- Companion computer (deferred to Phase 3): Raspberry Pi 5
 
 Key learnings:
-- A class makes the code reusable. The duplicate module-level functions are dead weight and need to be deleted.
-- MAVLink's bitmask for position targets is the most confusing part of pymavlink. `0b0000111111111000` = use position, ignore velocity/accel/yaw.
+- Verify every CAD dimension from datasheets or physical measurement, not memory.
+  The Emax mount pattern is 16x16mm M3, confirmed by measurement after an initial
+  wrong assumption cost a reprint.
+- PETG is the right material for a learning/demonstrator airframe: tougher than PLA,
+  no enclosure needed. Not the strongest option, but appropriate here.
+- Round carbon tubes with set-screw motor mounts can rotate under torque. Nylon-tip
+  set screws and keying the tube help. This bit me later (see below).
 
-## Computer vision pipeline - early June 2026
-Built the perception side before touching hardware.
-- `cv_detect.py`: HSV red-mask on a single image, biggest contour by area, bounding box, center coordinates
-- `cv_video_detect.py`: same logic frame-by-frame on `test_video.mp4`
-- `atlas_track.py`: closes the loop. Computes error_x from frame center, scales by YAW_GAIN, sends MAV_CMD_CONDITION_YAW relative commands to SITL
+## June 2026 - Frame build and bench configuration
+- Designed and printed the single-piece PETG center frame on a Bambu Lab A1 (SUNLU PETG)
+- Cut carbon tube arms, dry-fit and set final geometry (~108mm center-to-shaft,
+  ~26mm tip-to-tip prop clearance on 5-inch props)
+- Assembled FC/ESC stack on grommets, mounted in frame
+- Flashed ArduPilot via STM32CubeProgrammer (DFU), set frame params
+- 6-position accel calibration
+- Set AHRS_ORIENTATION=2 (Yaw90) to resolve an apparent pitch/roll axis swap seen
+  during accel cal. NOTE: this fix was validated by feel and a glance at the HUD,
+  not by a tilt test. This turned out to be incomplete and caused the first-hover
+  flip weeks later (see July 27).
+- Enabled battery monitor (BATT_MONITOR=4, BATT_VOLT_PIN=10, BATT_CURR_PIN=11)
 
-Key learnings:
-- HSV is more robust than RGB for color thresholding under varying brightness
-- `cv2.findContours` returns a list, always check length before max()
-- Two real bugs in atlas_track.py I need to fix before hardware:
-  1. Red mask only covers hue 0-10. Red wraps past 179, so I'm missing half the red spectrum.
-  2. No deadzone in the yaw loop. When error_x is near zero the drone still gets tiny yaw commands and oscillates.
-
-## Hardware selection - mid June 2026
-Switched from "use a Pixhawk dev kit" to "design and build a custom 5-inch quad." Decision driven by: I want to actually understand the stack, not bolt one together from a kit.
-
-Locked the build:
-- FC: Corvon H743 (ArduPilot target `CORVON743V1`, 30.5x30.5mm mount)
-- ESC: Corvon 50A 4-in-1 BLHeli_S, matched stack with the FC
-- Motors: Emax ECO II 2207 2400KV, 4S. 16x16mm M3 bolt pattern.
-- Battery: CNHL Black Series 4S 1500mAh 100C
-- Radio: RadioMaster Pocket ELRS + BetaFPV ELRS Lite receiver
-- Companion + camera (deferred until after manual hover): Raspberry Pi 5 4GB, Pi Camera Module 3 Wide
-- GPS (deferred): Matek M10Q-5883
-
-Strategy locked: **flight-first**. Get the thing hovering manually before any Pi, camera, or CV work. Adding autonomy to a drone that doesn't fly is just stacking unknowns.
-
-Key learnings:
-- Verify every spec from the datasheet, not from memory or from an LLM's first guess. I've already caught wrong dimensions (Pixhawk hole pattern when I should have been on the Corvon, wrong heat-set insert hole size) that would have caused reprints.
-- Print-before-commit: print one motor mount, fit-test, then commit to printing four.
-
-## Frame and CAD - mid to late June 2026
-Designed in Onshape.
-- 100x100mm octagonal dual-plate frame, 5mm PETG plates, 38mm gap
-- Four 16mm OD carbon fiber tube arms, press-fit into plate sockets and motor mount sockets
-- Motor mounts have a 4mm tall x 8mm diameter boss around the set screw hole for thread engagement
-- Set screw hole sized to 4.0mm for 4.6mm OD M3 brass heat-set inserts (manufacturer-spec hole size)
-- Bottom plate hole pattern updated from Pixhawk 32.1x28.5 to Corvon 30.5x30.5 at 3.2mm clearance
-- Top plate: removed ESC mount holes (ESC now stacks with FC on bottom plate), kept Pi 5 holes, camera bracket holes, corner standoff holes
-
-FC/ESC stack layout (locked):
-- Bottom-up: M3 nut, bottom plate (3.2mm hole), ESC with soft-mount grommets, 8mm female-female nylon standoff, FC with grommets, M3 screw with washer
-- Grommet measurements drove the 8mm standoff spec: 7mm total grommet height (1mm small flange, 1mm waist, 4mm large flange, plus board thickness)
+## Early July 2026 - Soldering, RC link, failsafe
+- Completed all ESC/motor soldering, XT60 leads, capacitor
+- Discovered DShot600 is incompatible with the Bluejay ESC on this hardware.
+  Switched to DShot300 (MOT_PWM_TYPE=5), which immediately produced motor response.
+  Confirmed with the ESC manufacturer.
+- Motor order was scrambled; corrected via SERVO_FUNCTION remap
+  (SERVO1=36, SERVO2=34, SERVO3=33, SERVO4=35)
+- Left motor direction had to be reversed directly in esc-configurator.com because
+  Bluejay ignored SERVO_BLH_RVMASK on that channel. NOTE: this setting lives on the
+  ESC chip, not in the .param file, so it is invisible to param backups.
+- Fixed a persistent "RC not found" fault: yellow/green data wires in the RX pigtail
+  were effectively swapped at the FC end. Fix was a deliberate non-standard swap at
+  the RP3 pad (green on T, yellow on R). By design, not an error.
+- Failsafe: FS_THR_ENABLE=1, relying on CRSF protocol-level link-loss detection,
+  because the RP3 holds last channel values on signal loss (throttle threshold alone
+  is insufficient). Bench-tested with TX off: FC declares failsafe and disarms.
 
 Key learnings:
-- An AI caught the set-screw crush risk on the carbon tube before I did. The boss + nylon-tipped set screw plus the proper insert hole size are the fix. I need to be the one catching these failure modes, not waiting to be told.
-- "Don't relitigate locked decisions" applies to me too. Once a dimension is verified from source, stop second-guessing it.
+- Hand-held throttle testing with props on is dangerous and produces unreliable data.
+  Instrument data (telemetry logs, Mission Planner) is ground truth, not feel.
+- Battery sag across long bench sessions is a major confounding variable. A sagging
+  pack produced apparent motor imbalance and instability that was entirely battery-induced.
 
-## Hardware on order / arrived - late June 2026
-Arrived:
-- 16mm OD carbon fiber tubes, 500mm length, qty 2. Press-fit into motor mount socket is snug. Good.
+## July 27, 2026 - FIRST STABLE HOVER (and the flip that hid for weeks)
+The aircraft flew. First stable manual hover achieved. Phase 1 complete.
 
-On order:
-- Emax ECO II 2207 motors
-- M3 8mm female-female nylon standoffs
-- M3x5x4.6mm brass heat-set inserts
-- M3x8mm nylon-tip set screws
+This session was a long debugging arc that ended by finding the true cause of the
+first-hover flip, which had survived every previous component check.
 
-Blocked on motor arrival:
-- Final motor mount reprint (need to verify wire clearance through the side slit before committing to four prints)
-- Arm cut length (determined after motor mount fit test)
-- Landing gear purchase (TPU feet, need to verify motor base M3 hole pattern matches)
+Getting to an armable state:
+- Onboard logging: 128GB and an old 8GB microSD both failed with "PreArm: Logging
+  failed" (128GB forced to FAT32 fails ArduPilot's SD driver; 8GB was dead). A new
+  SanDisk Ultra 32GB, formatted FAT32, fixed it on the first try. LOG_BACKEND_TYPE=1.
+  Lesson: 32GB or smaller, native FAT32. Don't fight oversized cards.
+- Voltage read 0.03V after the SD reseat, blocking arm. Cause: I knocked the ESC->FC
+  voltage-sense pin loose while seating the card. Reseated it and voltage read correct.
+  A parameter can scale a voltage reading, but it cannot make a connected sense line
+  read ~0V. Near-zero = no signal = physical, not a parameter.
+- BATT_ARM_VOLT had been left at 14.7 by the Initial Parameters wizard, too high.
+  Set to 14.0.
 
-## Current status - end of June 2026
-Phase 3 in progress. Vision pipeline is functional in sim with two known bugs queued for fixing before hardware integration. Frame CAD is largely done. Motor mount reprint and arm assembly are the next physical milestones. First powered hover target: end of summer.
+Finding the flip cause:
+- On carpet, both hands-off attempts flipped instantly on throttle-up. Logs showed
+  ATT.Roll running to ~179 and ATT.Pitch swinging -50 to +35 while DesRoll/DesPitch
+  stayed at zero. The FC commanded no attitude change; the aircraft diverged anyway.
+  That is a real divergence, not a tune problem.
+- Motors, props, spin directions, and mixing all checked out repeatedly. RCOU showed
+  the FC driving the correct corners for the correction it was attempting. So the
+  fault was upstream of the motors: the FC's sense of attitude.
+- The definitive test was a static tilt check on the bench (disarmed, watching the HUD):
+  pitching the nose UP showed GROUND, rolling RIGHT banked LEFT. Both attitude axes
+  were inverted. Both axes inverted (without being crossed) = a 180-degree yaw error
+  in AHRS_ORIENTATION.
+- Root cause: AHRS_ORIENTATION was 2 (Yaw90) but should have been 6 (Yaw270). The
+  original June fix uncrossed the axes (so pitch read as pitch, roll as roll) but left
+  both inverted, which a level HUD cannot reveal. An inverted axis flips the sign of
+  the stabilize feedback loop from negative (self-correcting) to positive (runaway),
+  so the aircraft flips on every takeoff the instant the loop gains authority. Idle
+  looks fine because the loop has no authority at zero throttle.
+- Fix: set AHRS_ORIENTATION=6. Re-ran the tilt test: all four directions now track
+  correctly. Re-ran Calibrate Level under the corrected orientation.
 
-Next session priorities:
-- Fix the two CV bugs (HSV wrap, yaw deadzone) or move them to KNOWN_ISSUES.md
-- Delete duplicate module-level functions in drone.py
-- Add requirements.txt and .gitignore
-- When motors arrive: wire clearance check, reprint mounts, fit test, cut arms
+Result: first hover was rock stable, zero oscillation. The "wiggle" chased for weeks
+was largely the FC fighting its own inverted feedback, and it disappeared once the
+orientation was correct. Aircraft drifted slowly in one direction, which is expected
+in Stabilize (attitude hold only, no position hold). Position drift is what GPS/Loiter
+solves in Phase 2.
+
+Key learnings:
+- Verify AHRS_ORIENTATION with a tilt test that moves the aircraft through pitch and
+  roll in both directions, not by feel or a level-HUD glance. A level HUD looks
+  identical whether an axis is inverted or not; only tilting reveals the sign.
+- An inverted attitude axis is a positive-feedback fault: perfect motors and props
+  will still flip on every takeoff, and no motor/prop/mixing test can catch it.
+- Instrumentation is what closed this. Weeks of hand tests could not; one logged flight
+  plus a tilt check did. Get the data, read the data.
+- First hover belongs on flat ground or grass, never carpet. Carpet grabs props and
+  turns a small tip into a full tumble, contaminating the log.
+
+Next session (Phase 2 - GPS autonomy):
+- Install and configure Corvon M10 GPS, compass calibration
+- BATT_VOLT_MULT calibration against a multimeter, then set proper failsafe thresholds
+  (BATT_LOW_VOLT ~14.0, BATT_CRT_VOLT ~13.2)
+- PID tuning / Autotune for the actual airframe
+- Loiter, Position Hold, waypoint missions, RTL
