@@ -1,57 +1,65 @@
 # ATLAS
 
-**Autonomous Tracking and Landing Aerial System**
+**Autonomous Tracking and Landing Aerial System** — a custom-built 5-inch
+quadcopter running ArduPilot, developed from simulation through to flying hardware.
+The goal is a working autonomous aircraft: manual hover, then GPS-based autonomous
+flight, then vision-guided target tracking.
 
-A 5-inch class autonomous quadcopter built from the frame up. Custom CAD, custom firmware configuration, Python flight control via MAVLink, and an OpenCV vision pipeline for target tracking.
+**Status (July 27, 2026): First stable manual hover achieved. Phase 1 complete.**
+Now moving into Phase 2 (GPS autonomy).
 
-Built by [Dhanush Kundur](https://github.com/<your-handle>), mechanical engineering at Ohio State. Targeting robotics and defense autonomy.
+## Build strategy
 
----
+Flight-first. The aircraft must achieve a stable, well-behaved manual hover before
+any autonomy or vision code is added. Simulation work (pymavlink mission scripts,
+OpenCV tracking prototype) is the software foundation, but hardware bring-up drives
+the critical path.
 
-## Project phases
+## Phases
 
-Build strategy is **flight-first**: prove manual hover before adding autonomy, prove autonomy before adding vision. Every phase is gated by the previous one working.
-
-- **Phase 1: Simulation** *(complete)* — ArduPilot SITL, pymavlink, scripted takeoff / waypoint navigation / RTL / landing
-- **Phase 2: Vision pipeline** *(complete in sim)* — OpenCV HSV detection on image and video, yaw-rate control loop closing detection to MAVLink commands in SITL
-- **Phase 3: Hardware build** *(in progress)* — frame design, motor mount iteration, FC/ESC stack assembly, manual hover
-- **Phase 4: Autonomous hover and waypoints on hardware** *(pending)*
-- **Phase 5: Vision tracking on hardware** *(pending)* — port pipeline to Raspberry Pi 5 + Pi Camera 3 Wide, integrate with companion-computer MAVLink link
-
----
+- **Phase 1 — Manual hover (COMPLETE):** Scratch-built airframe, ArduPilot config,
+  RC link, failsafes, first stable hover in Stabilize.
+- **Phase 2 — GPS autonomy (in progress):** Corvon M10 GPS, compass calibration,
+  Position Hold / Loiter, waypoint missions, Return-to-Launch. Includes PID tuning
+  / Autotune and battery-monitor calibration.
+- **Phase 3 — Vision (deferred):** Raspberry Pi 5 companion computer, OpenCV target
+  detection and tracking over MAVLink.
 
 ## Hardware
 
-| Component | Part |
-|---|---|
-| Flight controller | Corvon H743 (ArduPilot `CORVON743V1`) |
-| ESC | Corvon 50A 4-in-1 BLHeli_S |
+| Part | Component |
+|------|-----------|
+| Flight controller | Corvon H743 (CORVON743V1), ArduCopter 4.8.0-dev |
+| ESC | Corvon 50A 4-in-1, Bluejay, DShot300 |
 | Motors | Emax ECO II 2207 2400KV |
-| Frame | Custom 100x100mm octagonal dual-plate PETG, 16mm OD carbon fiber tube arms |
-| Battery | CNHL Black Series 4S 1500mAh 100C |
-| Radio | RadioMaster Pocket ELRS + BetaFPV ELRS Lite Rx |
-| GPS | Matek M10Q-5883 *(deferred)* |
-| Companion computer | Raspberry Pi 5 4GB *(deferred)* |
-| Camera | Pi Camera Module 3 Wide *(deferred)* |
+| Props | HQProp 5x4.3x3 V2S tri-blade |
+| Transmitter | BetaFPV LiteRadio 3 (ELRS) |
+| Receiver | RadioMaster RP3 Diversity 2.4GHz ELRS |
+| Battery | 4S LiPo (Zeee 1500mAh) |
+| Frame | Custom single-piece PETG center frame, plus config, carbon tube arms |
+| GPS (Phase 2) | Corvon M10 |
+| Companion computer (Phase 3) | Raspberry Pi 5 |
 
-Frame and motor mounts designed in Onshape. Printed in PETG with annealed walls for arm-socket strength.
+Airframe is a single-piece PETG center frame (designed in Onshape, printed on a
+Bambu Lab A1) with cut carbon tube arms and printed motor mounts.
 
----
+## Software / tooling
 
-## Software
+- Mission Planner — ground station, parameter config, and flight-log analysis
+- ArduPilot SITL — simulation environment for mission scripting
+- pymavlink — Python mission and control scripts (`drone.py`, `main.py`)
+- OpenCV — target-detection prototype (`cv_detect.py`, `atlas_track.py`)
+- WSL2 (Ubuntu) — development environment
+- STM32CubeProgrammer — firmware flashing; esc-configurator.com — ESC config
 
-| File | Role |
-|---|---|
-| `drone.py` | `Drone` class wrapping MAVLink: connect, arm, takeoff, fly_to, land, RTL |
-| `main.py` | Minimal scripted mission demo |
-| `cv_detect.py` | Single-frame HSV red-target detection |
-| `cv_video_detect.py` | Frame-by-frame detection on a video stream |
-| `atlas_track.py` | Closes the loop: detection error drives proportional yaw commands to the FC |
-| `log.md` | Dev log |
+## Repository contents
 
-**Environment:** WSL2 Ubuntu 22.04, Python 3, ArduPilot SITL, Mission Planner (ground station on Windows), VS Code.
-
----
+- `drone.py` — pymavlink wrapper: connect, arm, takeoff, fly_to, land, RTL
+- `main.py` — example scripted mission against SITL
+- `cv_detect.py` — single-image red-target detection (OpenCV)
+- `cv_video_detect.py` — same detection over a video stream
+- `atlas_track.py` — closes the loop: detection feeding yaw commands over MAVLink (sim)
+- `log.md` — full build log, sim through first hover
 
 ## Running the simulation
 
@@ -63,15 +71,19 @@ sim_vehicle.py -v ArduCopter --console --map
 python3 main.py
 ```
 
-For the tracking demo, drop a `test_video.mp4` containing a red target into the project root and run `python3 atlas_track.py` against a running SITL instance.
-
----
+For the tracking demo, drop a `test_video.mp4` containing a red target into the
+project root and run `python3 atlas_track.py` against a running SITL instance.
 
 ## Known issues
 
-Documented in `KNOWN_ISSUES.md`. Short version: red HSV mask only covers hue 0 to 10 (misses wrap past 179), and the yaw loop in `atlas_track.py` has no deadzone, causing oscillation near center. Both fixed before hardware integration.
+Tracked in `KNOWN_ISSUES.md`. Current items:
+- Red HSV mask in the CV code only covers hue 0–10 and misses the wrap past 179,
+  so pure-red targets near the hue boundary are dropped.
+- The yaw loop in `atlas_track.py` has no deadzone, causing oscillation near center.
+- `drone.py` contains duplicate module-level functions alongside the `Drone` class
+  (cleanup pending).
 
----
+Both CV issues are Phase 3 concerns and will be fixed before hardware vision integration.
 
 ## Status
 
