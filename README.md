@@ -84,7 +84,3 @@ Tracked in `KNOWN_ISSUES.md`. Current items:
   (cleanup pending).
 
 Both CV issues are Phase 3 concerns and will be fixed before hardware vision integration.
-
-## Status
-
-Currently in Phase 3. Carbon tubes fit-tested, motor mount geometry finalized pending motor arrival, FC/ESC stack hardware on order. First powered hover target: end of summer 2026.
